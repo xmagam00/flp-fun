@@ -1,16 +1,46 @@
-module Main where
+import System.IO
 import System.Environment
+import Data.List.Split
   
+addSpace :: String -> String
+addSpace = intercalate " " . chunksOf 1
+
+solveRPN = head . foldl foldingFunction [] . words  
+    where   foldingFunction (x:y:ys) "." = [x] ++ "." ++  [y] ++ ys  
+            foldingFunction (x:y:ys) "+" = "(" ++ [x] ++ [y] ++ ")" ++ ys  
+            foldingFunction (x:y:ys) "*" = [x] ++ "*" ++ ys  
+            foldingFunction xs numberString = read numberString ++ xs  
+
 main = do
         args <- getArgs
-        if length args /= 1
-                then error "just one argument!"
-                else do
-                        let fileName = head args
-                        input <- readFile fileName
-                        putStrLn fileName
-
---test =  do
---         input <- readFile "/home/rdy/haskell/workspace/flp-basic/myTests/basic.test"
---         putStrLn $ toLowerCase (replace (replace (replaceReturnInScope $ removeLineComments $ removeLongComments input++"\n") '\n' "${newline}") '\r' "${newLine}")
---             
+        if (length args == 2) 
+            handle <- openFile (args !! 1) ReadMode
+            content <- hGetsContent handle
+            hClose handle
+        else
+            content <- getLine
+        
+        contentWithSpaces <- addSpace content
+        
+        regular <- solveRPN contentWithSpaces
+        
+        #write regular expression
+        if (args !! 0 == "-r")
+           putStrLn regular
+        else
+            #create automata
+        
+        
+        
+            
+            
+        
+	
+	
+	
+	
+	
+	
+	
+	
+		
