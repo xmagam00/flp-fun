@@ -68,7 +68,7 @@ data ParseContext = Context
 type RegexParseState a = State ParseContext a
 
 -- The intial state of the parser
-initialContext = Context [] [] [] 0 Set.empty
+initialContext = Context [] [] [] 1 Set.empty
 
 -- Set the symbol for the concat symbol to be some symbol that won't appear in the regex
 concatSymbol = chr 0
