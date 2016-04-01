@@ -9,6 +9,7 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 
 
+
 -- Structure which represent a finite autamata
 -- All you need to represent a NFA is the start node, final node,
 -- a table of transitions and the set of all values we transition on
@@ -332,5 +333,5 @@ main = do
         if length content == 0 then do
             putStr ""
         else do
-            putStrLn (show (convertToNFA content))
+            putStrLn (replace "Nothing" "" (show (convertToNFA content)))
 
