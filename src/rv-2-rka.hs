@@ -1,3 +1,7 @@
+-- rv-2-rka
+-- xmagam00
+-- Martin Maga
+
 import System.IO
 import System.Environment
 import Control.Monad
@@ -288,7 +292,7 @@ doParen = do
 
 
 
-
+getContent :: [FilePath] -> IO String
 getContent args = do
                 if length args == 2 then do
                     content <- readFile (args !! 1)
@@ -299,7 +303,7 @@ getContent args = do
 shunt :: [String] -> [String] -> [String] -> [String]
 shunt o p [] = (reverse o) ++ p
 shunt o [] (x:xs)
-    | x `elem` ["*", "+", ".", "("] = shunt o [x] xs
+    | x `elem` [")", "/", "("] = shunt o [x] xs
     | x == ")" = error "mismatched parenthesis"
     | otherwise = shunt (x:o) [] xs
 shunt o (p:ps) (x:xs)
@@ -314,24 +318,32 @@ shunt o (p:ps) (x:xs)
     | otherwise = shunt (x:o) (p:ps) xs
 
 
--- | Convert an infix expression to postfix
-toPostfix :: String -> String
-toPostfix = intercalate " " . shunt [] [] . words
+
+-- method for postfix execution
+toPostfix:: [Char]->[Char]
+toPostfix = (intercalate " " . shunt [] [] . words)
 
 
-addSpaces xs@(_:[]) = xs
-addSpaces    (a:xs) = a:' ':addSpaces xs
-addSpaces xs              = xs
+-- method for infix execution
+toInfix:: [Char]->[Char]
+toInfix xs = xs
 
+
+-- main code execution
 main = do
-
      args <- getArgs
      content <- getContent args
-     if args !! 0 == "-r" then
-         putStrLn (addSpaces content)
+
+
+     if args !! 0 == "-r" then do
+         putStrLn (filter (/=' ') (toPostfix (toInfix (intersperse ' ' (content)))))
      else
+       --empty input it means epsilon
         if length content == 0 then do
-            putStr ""
+            putStrLn "1,2"
+            putStrLn "1"
+            putStrLn "2"
+            putStrLn "1,,2"
         else do
-            putStrLn (replace "Nothing" "" (show (convertToNFA content)))
+            putStrLn (show (convertToNFA content))
 
