@@ -6,10 +6,12 @@ import System.IO
 import System.Environment
 import Control.Monad
 import Data.List
+import Data.List.Split
 import Data.Char
 import Control.Monad.State
 import Data.Maybe
 import Data.Set (Set)
+import Data.String
 import qualified Data.Set as Set
 
 
@@ -19,8 +21,7 @@ import qualified Data.Set as Set
 -- a table of transitions and the set of all values we transition on
 data FiniteMachine = FiniteMachine{  start :: Node,
                                      final :: Set Node,
-                                     table :: [Transition],
-                                     alphabet :: Set Char
+                                     table :: [Transition]
                                   } deriving (Show, Eq)
 
 
@@ -35,8 +36,8 @@ convertToNFA str = let context = snd $ parseRegex str
                    in FiniteMachine {
                                       start = startNode,
                                       table = transTable,
-                                      final = Set.singleton finalNode,
-                                      alphabet = valueSet}
+                                      final = Set.singleton finalNode
+                                      }
 
 
 -- NFA node
@@ -324,9 +325,40 @@ toPostfix:: [Char]->[Char]
 toPostfix = (intercalate " " . shunt [] [] . words)
 
 
--- method for infix execution
+-- method for infix execution100
 toInfix:: [Char]->[Char]
 toInfix xs = xs
+
+generateAutomataStates:: Int->[Int]
+generateAutomataStates endState = [ states | states <- [1..endState]] 
+
+
+display = mapM_ (\(a,b,c) -> putStrLn (a++" = "++b++c))
+
+processOutput xs = do
+                let automataResult =  dropWhile  (/='=') (takeWhile (/='}')(dropWhile (=='{') (tail (dropWhile (/=' ')(show ((convertToNFA xs)))))))
+                let (startState, rest) = splitAt 1 (dropWhile (==' ') (dropWhile  (/=' ') automataResult))
+                -- end string processing
+                let end = drop 20 rest
+                --get index of ]
+                let endIndex =  (']'  `elemIndices` end) !! 0
+                let (endState, rest2) = splitAt endIndex end
+
+                -- get all states
+                let allAutomataStates =  map show (generateAutomataStates (read endState))
+                
+                let rulesIndex = ('['  `elemIndices` rest2) !! 0
+                let (rest3, rules) = splitAt rulesIndex rest2 
+
+                --print all states
+                putStrLn (intercalate "," allAutomataStates)
+                --print start state
+                putStrLn startState
+                --print end state
+                putStrLn endState
+
+                print  (filter (not . null)  (map (filter (/='(')) (map tail (splitOn ")" (filter (/='\'') (filter (/='*') ( "(" ++ ( (tail (rules))))))))))
+
 
 
 -- main code execution
@@ -345,5 +377,6 @@ main = do
             putStrLn "2"
             putStrLn "1,,2"
         else do
-            putStrLn (show (convertToNFA content))
+          processOutput content
+            
 
