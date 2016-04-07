@@ -1,39 +1,31 @@
 -- rv-2-rka
 -- xmagam00
 -- Martin Maga
-
+import Data.Char
 import System.IO
 import System.Environment
 import Control.Monad
 import Data.List
-import Data.List.Split
-import Data.Char
 import Control.Monad.State
+import Data.List.Split
 import Data.Maybe
+import qualified Data.Set as Set
 import Data.Set (Set)
 import Data.String
-import qualified Data.Set as Set
 
 
 
--- Structure which represent a finite autamata
--- All you need to represent a NFA is the start node, final node,
--- a table of transitions and the set of all values we transition on
-data FiniteMachine = FiniteMachine{  start :: Node,
-                                     final :: Set Node,
-                                     table :: [Transition]
-                                  } deriving (Show, Eq)
 
 
 
--- Takes the ParseContext result from the call to parseRegex
+-- Takes the ParseContext result from the call to parser
 -- and converts it to the NFA structure and returns it
-convertToNFA str = let context = snd $ parseRegex str
+convertToNFA str = let context = snd $ parser str
                        transTable = transitions context
                        startNode = last $ nodeList context
                        finalNode = head $ nodeList context
                        valueSet = values context
-                   in FiniteMachine {
+                   in AutomataMachine {
                                       start = startNode,
                                       table = transTable,
                                       final = Set.singleton finalNode
@@ -70,163 +62,117 @@ data ParseContext = Context
                       values :: Set Char
                     } deriving (Show, Eq)
 
--- Alias the State data constructor with a more friendly name
+
 type RegexParseState a = State ParseContext a
 
--- The intial state of the parser
-initialContext = Context [] [] [] 1 Set.empty
 
--- Set the symbol for the concat symbol to be some symbol that won't appear in the regex
-concatSymbol = chr 0
-
--- Set the symbol for the epsilon symbol to be some symbol that won't appear in the regex
-epsilonSymbol = chr 1
-
--- The list of operators with their associated precedences
-operatorList =
-    [(concatSymbol,7),
-     ('*',10),
-     ('|',5),
-     ('(',1),
-     (')',1)]
-
--- List of operators with their associated functions
-operatorFunctions =
-    [(concatSymbol,doConcat),
-     ('|',doUnion),
-     ('*',doStar),
-     ('(',doParen),
-     (')',doParen)]
+data AutomataMachine = AutomataMachine{start :: Node,final :: Set Node,table :: [Transition]} deriving (Show, Eq)
+                                  
 
 
-getPrecedence x = fromJust $ lookup x operatorList
-isOperator x = isJust $ lookup x operatorList
-isValue x = not $ isOperator x
+startState = Context [] [] [] 1 Set.empty
 
 
--- Run the parser over a string
-parseRegex str = (runState $
-              do
-                mapM_ processChar (appendConcatsAndEpsilons ("(" ++ str ++ ")"))
-                executeOperatorsUntilEmpty) initialContext
+concatenationS = (chr 0)
 
 
--- Process the regex input string and
--- add concatSymbol where a concat operation implicitly should be
--- add epsilonSymbol where we see we are doing a union on epsilon
--- This makes the rest of the code more general instead of putting
--- special cases into it
-appendConcatsAndEpsilons ('(':'|':str) =  '(':epsilonSymbol:appendConcatsAndEpsilons ('|':str)
-appendConcatsAndEpsilons ('|':')':str) =  '|':epsilonSymbol:appendConcatsAndEpsilons (')':str)
-appendConcatsAndEpsilons (x:y:str) =
-    if ((isValue x || x == ')' || x == '*') && (isValue y || y == '('))
-    then x:concatSymbol:appendConcatsAndEpsilons (y:str)
-    else x : appendConcatsAndEpsilons (y:str)
-appendConcatsAndEpsilons x = x
+epsilonS = (chr 1)
 
 
--- Process a character from the input string
--- Decides if it is a operator or not and calls the corresponding method
-processChar x = do
-  case isValue x of
-    True -> processInput x
-    False -> processOperatorOrParen x
+operatorList = [(concatenationS,7),('*',10),('|',5),('(',1),(')',1)]
+
+operatorFunctions = [(concatenationS,setConcat),('|',setUnion),('*',setStar),('(',setParen),(')',setParen)]
+
+getPrecedence x = fromJust ( lookup x operatorList)
+isOperator x = isJust ( lookup x operatorList)
+isValue x = not (isOperator x)
+
+parser string = (runState $ do
+                mapM_ charProcessing (apendSymbols ("(" ++ string ++ ")"))
+                exucuteNOtEmpty) startState
 
 
--- When the next character is not an operator we create a transition which
--- represents this character by creating two NFA nodes and adding a transition
--- on that character between them
-processInput x = do
-  nodeFrom <- createNewNode
-  nodeTo <- createNewNode
+apendSymbols ('(':'|':string) =  '(':epsilonS:apendSymbols ('|':string)
+apendSymbols ('|':')':string) =  '|':epsilonS:apendSymbols (')':string)
+apendSymbols (q:y:string) =
+    if (((isValue q || q == ')' || q == '*') )
+      && (isValue y || y == '('))
+    then q:concatenationS:apendSymbols (y:string)
+    else q : apendSymbols (y:string)
+apendSymbols q = q
+
+charProcessing x = do
+  if  (isValue x) then inputProcessing x else operatorProcessingOrParen x
+
+inputProcessing x = do
+  fromNode <- newNodeCreation
+  toNode <- newNodeCreation
   st <- get
-  let isEpsilon = x == epsilonSymbol
+  let isEpsilon = x == epsilonS
       getValue x = case isEpsilon of
                    True -> epsilon
                    False-> Just x
-      newTrans = (nodeFrom, nodeTo, getValue x) : (transitions st)
-      newNodes = nodeTo : nodeFrom : (nodeList st)
+      newTrans = (fromNode, toNode, getValue x) : (transitions st)
+      newNodes = toNode : fromNode : (nodeList st)
       newValues = case isEpsilon of
                     False -> Set.insert x $ values st
                     True -> values st
   put $ st { nodeList = newNodes, transitions = newTrans, values = newValues}
 
+operatorProcessingOrParen x 
+  | x == '(' = queueOp x
+  | x == ')' = exucuteIfBracket
+  | True = operatorProcessing x
 
--- Either process close paren or operator
-processOperatorOrParen x = do
-  case x of
-    ')' -> executeUntilOpenParenthesis
-    '(' -> queueOperator x
-    otherwise -> processOperator x
-
--- Compare the current operator with the operator on the front of the operator list
--- If the current operator has a higher precedence append it to the list
--- otherwise execute the operator at the head of the list and the repeat
--- this function
-processOperator x = do
-  precQ <- queuedPrecedence
+operatorProcessing x = do
+  precQ <- precendeQueue
   if (precQ < (getPrecedence x)) then
-      queueOperator x else
-      executeQueuedOperator >> processOperator x
+      queueOp x else
+      queteOperatorExecution >> operatorProcessing x
 
--- Get the head of the operator list wrapped in a Maybe monad
--- This is used incase the list is empty so we can return Nothing
-peekOperator = do
+concatOperator = do
   ops <- gets operators
-  case null ops of
-    True -> return $ Nothing
-    False -> return $ Just (head ops)
-
--- Get the precedence of the operator at the head of the operator list
--- If the operator list is empty it returns a precedence of 0
--- This will ensure that a comparison of any operator with an empty list
--- results in the other operator being pushed on the list
-queuedPrecedence = do
-    op <- peekOperator
-    maybe (return 0) (return.getPrecedence)  op
+  if  null ops then 
+    return  Nothing
+  else 
+    return (Just (head ops))
 
 
--- Execute every operator on the stack
--- This is used at the end of the parsing
-executeOperatorsUntilEmpty = do
-  mop <- peekOperator
+precendeQueue = do
+    op <- concatOperator
+    maybe (return 0) (return.getPrecedence) op
+
+exucuteNOtEmpty = do
+  mop <- concatOperator
   case mop of
-    Just op -> executeOperator op >> executeOperatorsUntilEmpty
+    Just op -> execOp op >> exucuteNOtEmpty
+    Nothing -> return ()
+
+
+exucuteIfBracket = do
+  mop <- concatOperator
+  case mop of
+    Just '(' -> execOp '('
+    Just op -> execOp op >> exucuteIfBracket
     Nothing -> return ()
 
 
 
--- Execute operators until and including open parenthesis
-executeUntilOpenParenthesis = do
-  mop <- peekOperator
-  case mop of
-    Just '(' -> executeOperator '('
-    Just op -> executeOperator op >> executeUntilOpenParenthesis
-    Nothing -> return ()
+queteOperatorExecution = do
+  op <- concatOperator
+  execOp $ fromJust op
 
 
--- Execute the function which corresponds to the operator which
--- is at the head of the operator list
-executeQueuedOperator = do
-  op <- peekOperator
-  executeOperator $ fromJust op
-
--- Given an operator execute its corresponding function
-executeOperator :: Char -> RegexParseState ()
-executeOperator op = do
+execOp op = do
     (fromJust $ lookup op operatorFunctions)
 
 -- Queue an operator to be execute later
-queueOperator x = do
+queueOp x = do
   st <- get
   let newOps = x : (operators st )
   put $ st { operators = newOps }
 
-
-
--- Get the next NFA Node and then update the state
-createNewNode :: RegexParseState Node
-createNewNode = do
+newNodeCreation = do
   st <- get
   let newNode = nextNode st
       newNext = newNode + 1
@@ -234,9 +180,7 @@ createNewNode = do
   return newNode
 
 
--- Execute the concat operator
-doConcat :: RegexParseState ()
-doConcat = do
+setConcat = do
   st <- get
   let nodes = nodeList st
       newNodes = (nodes !! 0) : (nodes !! 3) : (drop 4  nodes)
@@ -247,50 +191,39 @@ doConcat = do
              operators = newOperators}
 
 
--- Execute the union operator
-doUnion :: RegexParseState ()
-doUnion = do
-  nodeFrom <- createNewNode
-  nodeTo <- createNewNode
+setUnion = do
+  fromNode <- newNodeCreation
+  toNode <- newNodeCreation
   st <- get
   let nodes = nodeList st
-      newNodes = nodeTo : nodeFrom  : (drop 4  nodes)
+      newNodes = toNode : fromNode  : (drop 4  nodes)
       newTransitions = transitions st ++
-                       [(nodeFrom, nodes !! 1, epsilon),
-                        (nodeFrom, nodes !! 3, epsilon),
-                        (nodes !! 2, nodeTo, epsilon),
-                        (nodes !! 0, nodeTo, epsilon)]
+                       [(fromNode, nodes !! 1, epsilon),
+                        (fromNode, nodes !! 3, epsilon),
+                        (nodes !! 2, toNode, epsilon),
+                        (nodes !! 0, toNode, epsilon)]
       newOperators = tail $ operators st
   put $ st { nodeList = newNodes,
              transitions = newTransitions ,
              operators = newOperators}
 
 
--- Execute the star (closure) operator
-doStar :: RegexParseState ()
-doStar = do
-  nodeFrom <- createNewNode
-  nodeTo <- createNewNode
-  st <- get
-  let nodes = nodeList st
-      newNodes = nodeTo : nodeFrom  : (drop 2  nodes)
-      newTransitions = transitions st ++
-                       [(nodeFrom, nodes !! 1, epsilon),
-                        (nodeFrom, nodes !! 0, epsilon), -- skip over transition since * could mean 0 times
-                        (nodes !! 0, nodeTo, epsilon),
-                        (nodeTo,nodeFrom,epsilon)]
-      newOperators = tail $ operators st
-  put $ st { nodeList = newNodes,
-             transitions = newTransitions ,
-             operators = newOperators}
 
--- For a parenthesis we just remove it from the operator list
-doParen :: RegexParseState ()
-doParen = do
-  modify $  \st-> st { operators = tail $ operators st }
+setStar = do
+  fromNode <- newNodeCreation
+  toNode <- newNodeCreation
+  string <- get
+  let nodes = nodeList string
+      newNodes = (toNode) : fromNode  : (drop 2  nodes)
+      newTransitions = transitions string ++
+                       [(fromNode, nodes !! 1, epsilon),
+                        (fromNode, nodes !! 0, epsilon), 
+                        (nodes !! 0, toNode, epsilon),
+                        (toNode,fromNode,epsilon)]
+      newOperators = tail $ operators string
+  put (string {nodeList = newNodes, transitions = newTransitions,operators = newOperators})
 
-
-
+setParen = modify (\string-> string { operators = tail (operators string )})
 
 
 getContent :: [FilePath] -> IO String
@@ -301,12 +234,14 @@ getContent args = do
                 else do
                     content <- getLine
                     return content
-shunt :: [String] -> [String] -> [String] -> [String]
+
+
 shunt o p [] = (reverse o) ++ p
 shunt o [] (x:xs)
     | x `elem` [")", "/", "("] = shunt o [x] xs
-    | x == ")" = error "mismatched parenthesis"
     | otherwise = shunt (x:o) [] xs
+
+
 shunt o (p:ps) (x:xs)
     | x == "(" = shunt o (x:p:ps) xs
     | x == ")" = case (span (/= "(") (p:ps)) of
@@ -320,20 +255,25 @@ shunt o (p:ps) (x:xs)
 
 
 
--- method for postfix execution
-toPostfix:: [Char]->[Char]
 toPostfix = (intercalate " " . shunt [] [] . words)
 
 
--- method for infix execution100
-toInfix:: [Char]->[Char]
 toInfix xs = xs
 
 generateAutomataStates:: Int->[Int]
 generateAutomataStates endState = [ states | states <- [1..endState]] 
 
 
-display = mapM_ (\(a,b,c) -> putStrLn (a++" = "++b++c))
+changeOrder xs = do
+                  let firstIndex =  (','  `elemIndices` xs) 
+                  let (firstState,rest1) = splitAt (firstIndex !! 0) xs
+                  let (secondState,rest2) = splitAt ((','  `elemIndices` tail rest1) !! 0) (tail rest1)
+                  let output = firstState ++"," ++  (changeState (tail rest2)) ++"," ++  secondState
+                  putStrLn output
+                   
+                     
+changeState xs = if (xs == "Nothing") then "" else tail(snd(splitAt 4 xs))
+                     
 
 processOutput xs = do
                 let automataResult =  dropWhile  (/='=') (takeWhile (/='}')(dropWhile (=='{') (tail (dropWhile (/=' ')(show ((convertToNFA xs)))))))
@@ -356,9 +296,8 @@ processOutput xs = do
                 putStrLn startState
                 --print end state
                 putStrLn endState
-
-                print  (filter (not . null)  (map (filter (/='(')) (map tail (splitOn ")" (filter (/='\'') (filter (/='*') ( "(" ++ ( (tail (rules))))))))))
-
+               
+                mapM_ changeOrder ((filter (not . null)  (map (filter (/='(')) (map tail (splitOn ")" (filter (/='\'') (filter (/='*') ( "(" ++ ( (tail (rules)))))))))))
 
 
 -- main code execution
@@ -378,5 +317,3 @@ main = do
             putStrLn "1,,2"
         else do
           processOutput content
-            
-
