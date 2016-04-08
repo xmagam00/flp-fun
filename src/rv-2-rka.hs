@@ -14,63 +14,52 @@ import Data.Set (Set)
 import Data.String
 
 
-
-
-
-
--- Takes the ParseContext result from the call to parser
--- and converts it to the NFA structure and returns it
 convertToNFA str = let context = snd $ parser str
-                       transTable = transitions context
-                       startNode = last $ nodeList context
-                       finalNode = head $ nodeList context
-                       valueSet = values context
+                       transTable = prechody context
+                       startUzol = last $ listNode context
+                       finalUzol = head $ listNode context
+                       valueSet = hodnoty context
                    in AutomataMachine {
-                                      start = startNode,
+                                      start = startUzol,
                                       table = transTable,
-                                      final = Set.singleton finalNode
+                                      final = Set.singleton finalUzol
                                       }
 
 
--- NFA node
-type Node = Integer
 
--- The value for an edge in a NFA
-type TransitionValue = Maybe Char
+type Uzol = Integer
 
--- A transition in a NFA is a tuple of
--- StartNode , DestinationNode, Value to transition on
-type Transition = (Node,Node,TransitionValue)
 
--- The value of the edge in the NFA is a Maybe Char
--- Where Nothing is the epsilon transition
--- therefore lets just rename Nothing to epsilon
+type ValuePrechod = Maybe Char
+
+
+type Prechod = (Uzol,Uzol,ValuePrechod)
+
+
 epsilon = Nothing
 
 
--- Represent the list of pending operators
--- Every new operator seen will be put at the front of the list
-type OperatorList = [Char]
+type ListOperator = [Char]
 
--- The state that gets passed around which we used to build up the NFA
-data ParseContext = Context
+
+data ObsahParse = Obsah
                     {
-                      nodeList :: [Node],
-                      transitions :: [Transition],
-                      operators :: OperatorList,
-                      nextNode :: Node,
-                      values :: Set Char
+                      listNode :: [Uzol],
+                      prechody :: [Prechod],
+                      operators :: ListOperator,
+                      nextUzol :: Uzol,
+                      hodnoty :: Set Char
                     } deriving (Show, Eq)
 
 
-type RegexParseState a = State ParseContext a
+type ParseState a = State ObsahParse a
 
 
-data AutomataMachine = AutomataMachine{start :: Node,final :: Set Node,table :: [Transition]} deriving (Show, Eq)
+data AutomataMachine = AutomataMachine{start :: Uzol,final :: Set Uzol,table :: [Prechod]} deriving (Show, Eq)
                                   
 
 
-startState = Context [] [] [] 1 Set.empty
+startState = Obsah [] [] [] 1 Set.empty
 
 
 concatenationS = (chr 0)
@@ -79,13 +68,13 @@ concatenationS = (chr 0)
 epsilonS = (chr 1)
 
 
-operatorList = [(concatenationS,7),('*',10),('|',5),('(',1),(')',1)]
+opList = [(concatenationS,7),('*',10),('|',5),('(',1),(')',1)]
 
-operatorFunctions = [(concatenationS,setConcat),('|',setUnion),('*',setStar),('(',setParen),(')',setParen)]
+opFuncs = [(concatenationS,setConcat),('|',setUnion),('*',setStar),('(',setParen),(')',setParen)]
 
-getPrecedence x = fromJust ( lookup x operatorList)
-isOperator x = isJust ( lookup x operatorList)
-isValue x = not (isOperator x)
+gainPrecende x = fromJust ( lookup x opList)
+isOp x = isJust ( lookup x opList)
+isVal x = not (isOp x)
 
 parser string = (runState $ do
                 mapM_ charProcessing (apendSymbols ("(" ++ string ++ ")"))
@@ -95,29 +84,29 @@ parser string = (runState $ do
 apendSymbols ('(':'|':string) =  '(':epsilonS:apendSymbols ('|':string)
 apendSymbols ('|':')':string) =  '|':epsilonS:apendSymbols (')':string)
 apendSymbols (q:y:string) =
-    if (((isValue q || q == ')' || q == '*') )
-      && (isValue y || y == '('))
+    if (((isVal q || q == ')' || q == '*') )
+      && (isVal y || y == '('))
     then q:concatenationS:apendSymbols (y:string)
     else q : apendSymbols (y:string)
 apendSymbols q = q
 
 charProcessing x = do
-  if  (isValue x) then inputProcessing x else operatorProcessingOrParen x
+  if  (isVal x) then inputProcessing x else operatorProcessingOrParen x
 
 inputProcessing x = do
-  fromNode <- newNodeCreation
-  toNode <- newNodeCreation
+  fromUzol <- newUzolCreation
+  toUzol <- newUzolCreation
   st <- get
   let isEpsilon = x == epsilonS
       getValue x = case isEpsilon of
                    True -> epsilon
                    False-> Just x
-      newTrans = (fromNode, toNode, getValue x) : (transitions st)
-      newNodes = toNode : fromNode : (nodeList st)
+      newTrans = (fromUzol, toUzol, getValue x) : (prechody st)
+      newUzols = toUzol : fromUzol : (listNode st)
       newValues = case isEpsilon of
-                    False -> Set.insert x $ values st
-                    True -> values st
-  put $ st { nodeList = newNodes, transitions = newTrans, values = newValues}
+                    False -> Set.insert x $ hodnoty st
+                    True -> hodnoty st
+  put $ st { listNode = newUzols, prechody = newTrans, hodnoty = newValues}
 
 operatorProcessingOrParen x 
   | x == '(' = queueOp x
@@ -126,7 +115,7 @@ operatorProcessingOrParen x
 
 operatorProcessing x = do
   precQ <- precendeQueue
-  if (precQ < (getPrecedence x)) then
+  if (precQ < (gainPrecende x)) then
       queueOp x else
       queteOperatorExecution >> operatorProcessing x
 
@@ -140,7 +129,7 @@ concatOperator = do
 
 precendeQueue = do
     op <- concatOperator
-    maybe (return 0) (return.getPrecedence) op
+    maybe (return 0) (return.gainPrecende) op
 
 exucuteNOtEmpty = do
   mop <- concatOperator
@@ -164,7 +153,7 @@ queteOperatorExecution = do
 
 
 execOp op = do
-    (fromJust $ lookup op operatorFunctions)
+    (fromJust $ lookup op opFuncs)
 
 -- Queue an operator to be execute later
 queueOp x = do
@@ -172,56 +161,56 @@ queueOp x = do
   let newOps = x : (operators st )
   put $ st { operators = newOps }
 
-newNodeCreation = do
+newUzolCreation = do
   st <- get
-  let newNode = nextNode st
-      newNext = newNode + 1
-  put $ st { nextNode = newNext }
-  return newNode
+  let newUzol = nextUzol st
+      newNext = newUzol + 1
+  put $ st { nextUzol = newNext }
+  return newUzol
 
 
 setConcat = do
   st <- get
-  let nodes = nodeList st
-      newNodes = (nodes !! 0) : (nodes !! 3) : (drop 4  nodes)
-      newTransitions = transitions st ++ [(nodes !! 2, nodes !! 1, epsilon)]
+  let nodes = listNode st
+      newUzols = (nodes !! 0) : (nodes !! 3) : (drop 4  nodes)
+      newPrechods = prechody st ++ [(nodes !! 2, nodes !! 1, epsilon)]
       newOperators = tail $ operators st
-  put $ st { nodeList = newNodes,
-             transitions = newTransitions ,
+  put $ st { listNode = newUzols,
+             prechody = newPrechods ,
              operators = newOperators}
 
 
 setUnion = do
-  fromNode <- newNodeCreation
-  toNode <- newNodeCreation
+  fromUzol <- newUzolCreation
+  toUzol <- newUzolCreation
   st <- get
-  let nodes = nodeList st
-      newNodes = toNode : fromNode  : (drop 4  nodes)
-      newTransitions = transitions st ++
-                       [(fromNode, nodes !! 1, epsilon),
-                        (fromNode, nodes !! 3, epsilon),
-                        (nodes !! 2, toNode, epsilon),
-                        (nodes !! 0, toNode, epsilon)]
+  let nodes = listNode st
+      newUzols = toUzol : fromUzol  : (drop 4  nodes)
+      newPrechods = prechody st ++
+                       [(fromUzol, nodes !! 1, epsilon),
+                        (fromUzol, nodes !! 3, epsilon),
+                        (nodes !! 2, toUzol, epsilon),
+                        (nodes !! 0, toUzol, epsilon)]
       newOperators = tail $ operators st
-  put $ st { nodeList = newNodes,
-             transitions = newTransitions ,
+  put $ st { listNode = newUzols,
+             prechody = newPrechods ,
              operators = newOperators}
 
 
 
 setStar = do
-  fromNode <- newNodeCreation
-  toNode <- newNodeCreation
+  fromUzol <- newUzolCreation
+  toUzol <- newUzolCreation
   string <- get
-  let nodes = nodeList string
-      newNodes = (toNode) : fromNode  : (drop 2  nodes)
-      newTransitions = transitions string ++
-                       [(fromNode, nodes !! 1, epsilon),
-                        (fromNode, nodes !! 0, epsilon), 
-                        (nodes !! 0, toNode, epsilon),
-                        (toNode,fromNode,epsilon)]
+  let nodes = listNode string
+      newUzols = (toUzol) : fromUzol  : (drop 2  nodes)
+      newPrechods = prechody string ++
+                       [(fromUzol, nodes !! 1, epsilon),
+                        (fromUzol, nodes !! 0, epsilon), 
+                        (nodes !! 0, toUzol, epsilon),
+                        (toUzol,fromUzol,epsilon)]
       newOperators = tail $ operators string
-  put (string {nodeList = newNodes, transitions = newTransitions,operators = newOperators})
+  put (string {listNode = newUzols, prechody = newPrechods,operators = newOperators})
 
 setParen = modify (\string-> string { operators = tail (operators string )})
 
@@ -238,18 +227,14 @@ getContent args = do
 
 shunt o p [] = (reverse o) ++ p
 shunt o [] (x:xs)
-    | x `elem` [")", "/", "("] = shunt o [x] xs
+    | x `elem` ["/", "/", "-"] = shunt o [x] xs
     | otherwise = shunt (x:o) [] xs
 
 
 shunt o (p:ps) (x:xs)
-    | x == "(" = shunt o (x:p:ps) xs
-    | x == ")" = case (span (/= "(") (p:ps)) of
-        (as, b:bs) -> shunt (as ++ o) bs xs
     | x == "*" = shunt o (x:p:ps) xs
     | x `elem` ["."] = case (p) of
         "*" -> shunt (p:o) (x:ps) xs
-        "(" -> shunt o (x:p:ps) xs
         otherwise -> shunt (p:o) (x:ps) xs
     | otherwise = shunt (x:o) (p:ps) xs
 
@@ -300,6 +285,56 @@ processOutput xs = do
                 mapM_ changeOrder ((filter (not . null)  (map (filter (/='(')) (map tail (splitOn ")" (filter (/='\'') (filter (/='*') ( "(" ++ ( (tail (rules)))))))))))
 
 
+
+data Expression = Const String | Exp Expression String Expression
+ 
+-- parsing function 
+precedence :: Expression -> Int
+precedence (Const _) = 5
+precedence (Exp _ op _)
+  | op `elem` ["^"]     = 4
+  | op `elem` ["*"] = 3
+  | op `elem` ["+","."] = 2
+  | otherwise = 0
+ 
+leftAssoc :: Expression -> Bool
+leftAssoc (Const _) = False
+leftAssoc (Exp _ op _) = op `notElem` ["^","*","+"]
+ 
+rightAssoc :: Expression -> Bool
+rightAssoc (Const _) = False
+rightAssoc (Exp _ op _) = op `elem` ["^"]
+ 
+instance Show Expression where
+  show (Const x) = x
+  show exp@(Exp l op r) = left++" "++op++" "++right
+    where left  = if leftNeedParen then "( "++(show l)++" )" else show l
+          right = if rightNeedParen then "( "++(show r)++" )" else show r
+          leftNeedParen = (leftPrec < opPrec) || ((leftPrec == opPrec) && (rightAssoc exp))
+          rightNeedParen = (rightPrec < opPrec) || ((rightPrec == opPrec) && (leftAssoc exp))
+          leftPrec  = precedence l
+          rightPrec = precedence r
+          opPrec    = precedence exp
+ 
+buildExp :: [Expression] -> String -> [Expression]
+buildExp stack x
+  | not.isOp $ x = Const x : stack
+  | otherwise    = Exp l x r : rest
+    where r:l:rest = stack
+          isOp = (`elem` ["^","*","+","."])
+
+replaceO [] = []
+replaceO (x:xs) = 
+     if x == '+' 
+     then '|' : replaceO xs 
+     else x : replaceO xs
+
+replace1 [] = []
+replace1 (x:xs) = 
+     if x == '.' 
+     then ' ' : replace1 xs 
+     else x : replace1 xs
+
 -- main code execution
 main = do
      args <- getArgs
@@ -316,4 +351,5 @@ main = do
             putStrLn "2"
             putStrLn "1,,2"
         else do
-          processOutput content
+          let postFixRegex = filter (/=' ') (replace1 $ replaceO $ filter (/=' ')(show $ ((head.(foldl buildExp []).words) (intersperse ' ' content))))
+          processOutput postFixRegex
