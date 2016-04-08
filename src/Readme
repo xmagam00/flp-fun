@@ -1,6 +1,8 @@
 Projekt z predmetu FLP.
 Pre prepínač "-t" platia nasledujúce veci:
-V zadaní nebolo nejakým spôsobom definované, či počiatočný stav má byť nutne stav "1", preto je počiatočný stav vždy stav o 1 menší ako stav koncový. Tj pokiaľ je koncový stav "10", počiatočný stav je "9".
+V zadaní som nenašiel nutnú podmienku, že počiatočný stav je nutne 1. Preto počiatočný stav v istých prípadoch je jedna, pokiaľ je automat tak konštruovaný.
+Automat nevie spracovávať operátor "*".
+
 
 Inštalácia:
 Aplikácia pre svoj beh nevyžaduje žiadne neštandardné knižnice(program je štandardne preložitelný na serveri merlin).

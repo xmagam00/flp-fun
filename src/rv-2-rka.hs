@@ -262,8 +262,11 @@ changeState xs = if (xs == "Nothing") then "" else tail(snd(splitAt 4 xs))
 
 processOutput xs = do
                 let automataResult =  dropWhile  (/='=') (takeWhile (/='}')(dropWhile (=='{') (tail (dropWhile (/=' ')(show ((convertToNFA xs)))))))
-                let (startState, rest) = splitAt 1 (dropWhile (==' ') (dropWhile  (/=' ') automataResult))
+                let ciarkaIndeces = (','  `elemIndices` automataResult) !! 0
+                let (startState, rest) = splitAt (ciarkaIndeces -2) (dropWhile (==' ') (dropWhile  (/=' ') automataResult))
                 -- end string processing
+                let endIndex2 =  ('['  `elemIndices` rest) !! 0
+
                 let end = drop 20 rest
                 --get index of ]
                 let endIndex =  (']'  `elemIndices` end) !! 0
