@@ -13,111 +13,131 @@ import qualified Data.Set as Set
 import Data.Set (Set)
 import Data.String
 
+-- |convertToNfa take regular expression as string and parse it
+convertToNFA str = let context= snd((parser str))
+                       transTable= (prechody context)
+                       startUzol= last(nodesOfList context)
+                       finalUzol= head(nodesOfList context)
+                       valueSet= (hodnoty context)
+                   in AutomataMachine {stateOfStart = startUzol, tabulka = transTable, final = Set.singleton finalUzol}
 
-convertToNFA str = let context = snd $ parser str
-                       transTable = prechody context
-                       startUzol = last $ listNode context
-                       finalUzol = head $ listNode context
-                       valueSet = hodnoty context
-                   in AutomataMachine {
-                                      start = startUzol,
-                                      table = transTable,
-                                      final = Set.singleton finalUzol
-                                      }
-
-
-
+-- | Typ uzol predstavuje uzol binarneho stromu
 type Uzol = Integer
 
-
+-- | Typ 'ValuePrechod' Predstavuje prechodovy element zo stavu do stavu
 type ValuePrechod = Maybe Char
 
-
+-- | 'Prechod' predstavune 3 uzol,uzol, prechod
 type Prechod = (Uzol,Uzol,ValuePrechod)
 
-
+-- | Hodnota epsilonu je definovana ako Nothing
 epsilon = Nothing
 
 
-type ListOperator = [Char]
+-- | OperatorsOfList predstavuje list operacii
+type OperatorsOfList = [Char]
 
 
-data ObsahParse = Obsah
-                    {
-                      listNode :: [Uzol],
-                      prechody :: [Prechod],
-                      operators :: ListOperator,
-                      nextUzol :: Uzol,
-                      hodnoty :: Set Char
-                    } deriving (Show, Eq)
+data ObsahParse =Obsah
+                    {nodesOfList::[Uzol],  -- | NodeOfList predstavuje zoznam vsetkych uzol stromu
+                      prechody::[Prechod], -- | Prechody, je zoznam vsetkych prechodov
+                      operators::OperatorsOfList, -- | OperatorsOfList je zoznam vsetkych operatorv
+                      nextUzol::Uzol, -- | Uzol
+                      hodnoty::Set(Char) -- | Mnozina hodnot
+                    }deriving(Show,Eq)
 
+-- | ParseState predsavuje aktulne spracovany stav
+type ParseState a=State ObsahParse a
 
-type ParseState a = State ObsahParse a
+-- | AutomataMachine predstavuje 
+data AutomataMachine=AutomataMachine{
+  stateOfStart::Uzol, -- | Pociatocny stav
+  final::Set Uzol, -- | Koncovy stav
+  tabulka::[Prechod] -- | Tabulka prechodov
+  }deriving(Show,Eq)
 
+-- | Pociatocny stav empty list                                  
+emptyList = []
 
-data AutomataMachine = AutomataMachine{start :: Uzol,final :: Set Uzol,table :: [Prechod]} deriving (Show, Eq)
-                                  
+-- | Pociatocny stav prazdny set
+emptySet = Set.empty
 
+-- | Start state
+startState =Obsah (emptyList) (emptyList) (emptyList) (1) (emptySet)
 
-startState = Obsah [] [] [] 1 Set.empty
+-- | Concatenacny symbol
+concatenationS=(chr 0)
+-- | Epsilon znak
+epsilonS=(chr 1)
 
+-- | Zoznam precedencii operatorov
+precendeList = [1,5,7,10]
 
-concatenationS = (chr 0)
+-- | Zoznam operatorov
+operatorList = [')','(','|','*']
 
+-- | List operatorov
+opList = [(operatorList !! 0,precendeList !! 0),(operatorList !! 2,precendeList !! 1),(operatorList !! 1, precendeList !! 0),(operatorList !! 3, precendeList !! 3),(concatenationS, precendeList !! 2)]
 
-epsilonS = (chr 1)
+-- | Zoznam fukcii
+opFuncs = [(operatorList !! 3,setStar),(operatorList !! 1,setParen),(operatorList !! 0,setParen),(concatenationS,setConcat),(operatorList !! 2,setUnion)]
 
+-- | ziskat precendiu
+gainPrecende x =(fromJust(lookup x opList))
 
-opList = [(concatenationS,7),('*',10),('|',5),('(',1),(')',1)]
+-- | funkcia parser
+parser string = (runState(do -- | spracuje vsetky znak
+                mapM_ charProcessing(symbolAppendder( "("++string++")"))
+                exucuteNOtEmpty))startState
 
-opFuncs = [(concatenationS,setConcat),('|',setUnion),('*',setStar),('(',setParen),(')',setParen)]
-
-gainPrecende x = fromJust ( lookup x opList)
-isOp x = isJust ( lookup x opList)
-isVal x = not (isOp x)
-
-parser string = (runState $ do
-                mapM_ charProcessing (apendSymbols ("(" ++ string ++ ")"))
-                exucuteNOtEmpty) startState
-
-
-apendSymbols ('(':'|':string) =  '(':epsilonS:apendSymbols ('|':string)
-apendSymbols ('|':')':string) =  '|':epsilonS:apendSymbols (')':string)
-apendSymbols (q:y:string) =
+-- | Funkcia appenduje symboly
+symbolAppendder ('(':'|':string)=('(':epsilonS:symbolAppendder ('|':string))
+symbolAppendder ('|':')':string)=('|':epsilonS:symbolAppendder (')':string))
+symbolAppendder (q:y:string)=
     if (((isVal q || q == ')' || q == '*') )
       && (isVal y || y == '('))
-    then q:concatenationS:apendSymbols (y:string)
-    else q : apendSymbols (y:string)
-apendSymbols q = q
+    then q:concatenationS:symbolAppendder (y:string)
+    else q : symbolAppendder (y:string)
+symbolAppendder q = q
 
-charProcessing x = do
-  if  (isVal x) then inputProcessing x else operatorProcessingOrParen x
+-- | spracovanie znakov v regex
+charProcessing y
+  | (isVal y) = inputProcessing y
+  | True =  operatorProcessingOrParen y
 
+
+--
 inputProcessing x = do
   fromUzol <- newUzolCreation
   toUzol <- newUzolCreation
   st <- get
-  let isEpsilon = x == epsilonS
+  let isEpsilon=(x == epsilonS)
       getValue x = case isEpsilon of
                    True -> epsilon
                    False-> Just x
-      newTrans = (fromUzol, toUzol, getValue x) : (prechody st)
-      newUzols = toUzol : fromUzol : (listNode st)
-      newValues = case isEpsilon of
-                    False -> Set.insert x $ hodnoty st
+      newTrans=(fromUzol, toUzol, getValue x) : (prechody st)
+      newUzols= toUzol : fromUzol : (nodesOfList st)
+      newValues= case isEpsilon of
+                    False -> Set.insert x (hodnoty st)
                     True -> hodnoty st
-  put $ st { listNode = newUzols, prechody = newTrans, hodnoty = newValues}
+  put(st{nodesOfList=newUzols,prechody=newTrans,hodnoty=newValues})
 
+
+-- | Spracovanie operatoru *
 operatorProcessingOrParen x 
   | x == '(' = queueOp x
   | x == ')' = exucuteIfBracket
   | True = operatorProcessing x
 
+-- | Spracovanie operatorov
 operatorProcessing x = do
   precQ <- precendeQueue
   if (precQ < (gainPrecende x)) then
       queueOp x else
       queteOperatorExecution >> operatorProcessing x
+
+isOp x =isJust ( lookup x opList)
+isVal x =not (isOp x)
 
 concatOperator = do
   ops <- gets operators
@@ -171,11 +191,11 @@ newUzolCreation = do
 
 setConcat = do
   st <- get
-  let nodes = listNode st
+  let nodes = nodesOfList st
       newUzols = (nodes !! 0) : (nodes !! 3) : (drop 4  nodes)
       newPrechods = prechody st ++ [(nodes !! 2, nodes !! 1, epsilon)]
       newOperators = tail $ operators st
-  put $ st { listNode = newUzols,
+  put $ st { nodesOfList = newUzols,
              prechody = newPrechods ,
              operators = newOperators}
 
@@ -184,7 +204,7 @@ setUnion = do
   fromUzol <- newUzolCreation
   toUzol <- newUzolCreation
   st <- get
-  let nodes = listNode st
+  let nodes = nodesOfList st
       newUzols = toUzol : fromUzol  : (drop 4  nodes)
       newPrechods = prechody st ++
                        [(fromUzol, nodes !! 1, epsilon),
@@ -192,7 +212,7 @@ setUnion = do
                         (nodes !! 2, toUzol, epsilon),
                         (nodes !! 0, toUzol, epsilon)]
       newOperators = tail $ operators st
-  put $ st { listNode = newUzols,
+  put $ st { nodesOfList = newUzols,
              prechody = newPrechods ,
              operators = newOperators}
 
@@ -202,7 +222,7 @@ setStar = do
   fromUzol <- newUzolCreation
   toUzol <- newUzolCreation
   string <- get
-  let nodes = listNode string
+  let nodes = nodesOfList string
       newUzols = (toUzol) : fromUzol  : (drop 2  nodes)
       newPrechods = prechody string ++
                        [(fromUzol, nodes !! 1, epsilon),
@@ -210,7 +230,7 @@ setStar = do
                         (nodes !! 0, toUzol, epsilon),
                         (toUzol,fromUzol,epsilon)]
       newOperators = tail $ operators string
-  put (string {listNode = newUzols, prechody = newPrechods,operators = newOperators})
+  put (string {nodesOfList = newUzols, prechody = newPrechods,operators = newOperators})
 
 setParen = modify (\string-> string { operators = tail (operators string )})
 
@@ -280,7 +300,7 @@ processOutput xs = do
 
                 --print all states
                 putStrLn (intercalate "," allAutomataStates)
-                --print start state
+                --print stateOfStart state
                 putStrLn startState
                 --print end state
                 putStrLn endState
@@ -291,22 +311,20 @@ processOutput xs = do
 
 data Expression = Const String | Exp Expression String Expression
  
--- parsing function 
 precedence :: Expression -> Int
-precedence (Const _) = 5
+precedence (Const _) = 4
 precedence (Exp _ op _)
-  | op `elem` ["^"]     = 4
   | op `elem` ["*"] = 3
   | op `elem` ["+","."] = 2
   | otherwise = 0
  
 leftAssoc :: Expression -> Bool
 leftAssoc (Const _) = False
-leftAssoc (Exp _ op _) = op `notElem` ["^","*","+"]
+leftAssoc (Exp _ op _) = op `notElem` ["*",".","+"]
  
 rightAssoc :: Expression -> Bool
 rightAssoc (Const _) = False
-rightAssoc (Exp _ op _) = op `elem` ["^"]
+rightAssoc (Exp _ op _) = op `elem` ["*"]
  
 instance Show Expression where
   show (Const x) = x
@@ -324,7 +342,7 @@ buildExp stack x
   | not.isOp $ x = Const x : stack
   | otherwise    = Exp l x r : rest
     where r:l:rest = stack
-          isOp = (`elem` ["^","*","+","."])
+          isOp = (`elem` ["*","+","."])
 
 replaceO [] = []
 replaceO (x:xs) = 
@@ -337,6 +355,11 @@ replace1 (x:xs) =
      if x == '.' 
      then ' ' : replace1 xs 
      else x : replace1 xs
+
+insertAfter [] = []
+insertAfter (x:xs)
+  | x == '*' = ',':x:insertAfter xs
+  | True = x:insertAfter xs
 
 -- main code execution
 main = do
@@ -354,5 +377,5 @@ main = do
             putStrLn "2"
             putStrLn "1,,2"
         else do
-          let postFixRegex = filter (/=' ') (replace1 $ replaceO $ filter (/=' ')(show $ ((head.(foldl buildExp []).words) (intersperse ' ' content))))
+          let postFixRegex = filter (/=',') $ filter (/=' ') (replace1 $ replaceO $ filter (/=' ')(show $ ((head.(foldl buildExp []).words) (intersperse ' ' $ insertAfter content))))
           processOutput postFixRegex

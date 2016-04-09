@@ -1,0 +1,6 @@
+Projekt z predmetu FLP.
+Pre prepínač "-t" platia nasledujúce veci:
+V zadaní som nenašiel nutnú podmienku, že počiatočný stav je nutne 1. Preto počiatočný stav v istých prípadoch je jedna, pokiaľ je automat tak konštruovaný.  
+
+Inštalácia:
+Aplikácia pre svoj beh nevyžaduje žiadne neštandardné knižnice(program je štandardne preložitelný na serveri merlin).

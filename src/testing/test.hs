@@ -13,20 +13,19 @@ import Data.String
 data Expression = Const String | Exp Expression String Expression
  
 precedence :: Expression -> Int
-precedence (Const _) = 5
+precedence (Const _) = 4
 precedence (Exp _ op _)
-	| op `elem` ["^"]     = 4
 	| op `elem` ["*"] = 3
 	| op `elem` ["+","."] = 2
 	| otherwise = 0
  
 leftAssoc :: Expression -> Bool
 leftAssoc (Const _) = False
-leftAssoc (Exp _ op _) = op `notElem` ["^","*","+"]
+leftAssoc (Exp _ op _) = op `notElem` ["*",".","+"]
  
 rightAssoc :: Expression -> Bool
 rightAssoc (Const _) = False
-rightAssoc (Exp _ op _) = op `elem` ["^"]
+rightAssoc (Exp _ op _) = op `elem` ["*"]
  
 instance Show Expression where
 	show (Const x) = x
@@ -44,7 +43,7 @@ buildExp stack x
 	| not.isOp $ x = Const x : stack
 	| otherwise    = Exp l x r : rest
 		where r:l:rest = stack
-		      isOp = (`elem` ["^","*","+","."])
+		      isOp = (`elem` ["*","+","."])
 
 replaceO [] = []
 replaceO (x:xs) = 
@@ -52,7 +51,16 @@ replaceO (x:xs) =
      then '|' : replaceO xs 
      else x : replaceO xs
 
+
+
+insertAfter [] = []
+insertAfter (x:xs)
+	| x == '*' = ',':x:insertAfter xs
+	| True = x:insertAfter xs
+
+
 main = do
 	contents <- getLine
-	let test = replaceO $ filter (/=' ')(show $ ((head.(foldl buildExp []).words) (intersperse ' ' contents)))
-	putStrLn test
+	--putStrLn $ insertAfter contents
+	putStrLn $ filter (/=' ') $ filter (/=',')(show $ ((head.(foldl buildExp []).words) (intersperse ' ' $ insertAfter contents)))
+	
